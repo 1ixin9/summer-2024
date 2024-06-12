@@ -1,0 +1,106 @@
+from langchain.prompts import PromptTemplate
+from langchain_community.chat_models import QianfanChatEndpoint
+from langchain_core.output_parsers import JsonOutputParser
+import pandas as pd
+from IPython.display import display
+
+# key
+qianfan_ak = "DAEEqjuvglLTgQMCXqRvqfUj"
+qianfan_sk = "s0AJ849GNB6440lwLWDvGuNEJNrgrbQ3"
+
+# model
+llm = QianfanChatEndpoint(model="ERNIE-4.0-8K", streaming=True, qianfan_ak=qianfan_ak, qianfan_sk=qianfan_sk, penalty_score=1)
+
+def df_mk(ar1, ar2, ar3, ar4):
+    df = pd.DataFrame({ # this is the syntax for making a df which is basically a table in pandas
+        "产品描述": ar1, # the quotes has the title of the column
+        "产品卖点": ar2, # u can either make an array like [val, val] urself
+        "最佳营销卖点": ar3, # or u can use an array that u alr made
+        "目标受众": ar4 # and put it into the df like that
+    })
+    return df
+
+def call_marketinGPT():
+
+    file_path = "products.txt" # this is the file u wanna open
+    # if it was in a diff path, then u would hv to do ../folder/folder/file.txt instead
+    
+    with open(file_path, 'r', encoding='utf-8') as file: # 'r' means read (DUH), utf-8 encoding is standard
+        prod_descr = file.readlines() # "with" makes sure it's closed at the end
+    # "as file" basically sets what's opened into the variable "file"
+    # prod_descr is a list type var that stores everything that is read from the file
+    # readlines reads all the individual lines (broken apart by \n) into the list
+    
+    prod_descr = [desc.strip() for desc in prod_descr] # prod_descr prior to this would be like ["prod_des1\n", "prod_des2\n"]
+    # desc is each individual line stored in prod_descr, using desc.strip for each desc gets rid of \n at the end of each one
+    # now, prod_descr is like ["prod_des1", "prod_des2"]
+    
+    prompt = PromptTemplate(
+        # template is the prompt that ur using to prompt engineer the GPT
+        template="""作为一名零售顾问助手，你的任务是帮助用户分析他们的产品描述，
+        并提供该产品的卖点、最佳营销卖点、目标受众以及针对目标受众的营销策略。
+        请根据以下格式进行回复，并且仅根据用户提供的信息进行分析和回答：\n\n
+            1. **产品描述**：用户提供的产品详细信息。\n
+            2. **产品卖点**：根据产品描述，提炼出吸引潜在消费者的关键特点。\n
+            3. **最佳营销卖点**：从产品卖点中选择最具市场潜力的特点，并解释为何这个卖点最有吸引力。\n
+            4. **目标受众**：根据产品卖点，确定最适合的消费群体。\n\n
+            
+        以下是一个示例对话：\n
+        
+        用户：我们有一款新型的可折叠电动自行车，重量轻，电池续航长，适合城市通勤。\n\n
+        系统：\n
+            1. **产品描述**：新型可折叠电动自行车，重量轻，电池续航长，适合城市通勤。\n
+            2. **产品卖点**：轻便设计、长续航电池、便捷的城市通勤工具。\n
+            3. **最佳营销卖点**：长续航电池，因为城市通勤用户对续航时间有较高需求，能够减少充电频率。\n
+            4. **目标受众**：城市白领、大学生、注重环保和便捷出行的用户。\n\n
+            
+        请提供您的产品描述：\n
+        
+        {prod}\n\n
+
+        1. **产品描述**：用户提供的产品描述\n
+        2. **产品卖点**：提炼出的产品卖点\n
+        3. **最佳营销卖点**：选择的最佳营销卖点及其原因\n
+        4. **目标受众**：确定的目标消费群体\n""",
+        
+        input_variables=["prod"] # here ur telling the gpt that the input variables it uses will be
+        # used where {prod} is used in the template
+    )
+    
+    ar1, ar2, ar3, ar4 = [], [], [], [] # here ur declaring the arrays that the df will be made w
+
+    for prod_des in prod_descr: # this is a for-each loop which ensures that each val in the list is used
+        
+        marketinGPT = prompt | llm | JsonOutputParser() # this is the setup for the processing pipeline
+        # prompt refers to the template ur using to prompt engineer -> this is given to llm
+        # llm then takes the text input and generates a response
+        # JsonOutputParser is an output parser (DUH but also an output parser takes raw output and turns it into a structured format)
+        # ^ this turns the llm's output into something Python can easily understand
+        # using the '|' operator is basically the chaining part of the processing pipeline
+        # ^ this says the output of one component should be used as the input of the next component
+        # ^ so the prompt's output is the llm's input, the llm's output is the parser's input
+        
+        try: # we using a try-except bc who knows if the GPT will output something that is always understandable
+            ans = marketinGPT.invoke({"prod": prod_des}) # marketinGPT (brilliant name) is the name of the pipeline
+            # so when we call it, we r getting an instance of it
+            # .invoke(input val) is a method that tells the model to provide a response based on the input val
+            # "prod" is the input variable in the prompt, prod_des is the value in the for-each loop
+            # this lets prod_des be passed in as the input of the prompt
+            
+            ar1.append(ans.get('产品描述', 'missing description')) # here we r appending (adding) the answer to the arrays
+            ar2.append(ans.get('产品卖点', 'missing description')) # we hv one option, where if the answer provided by GPT includes
+            ar3.append(ans.get('最佳营销卖点', 'missing description')) # the key for an array we r expecting (like it has a '产品描述' component)
+            ar4.append(ans.get('目标受众', 'missing description')) # then the text following that will be stored in the array
+            # but if there's no key for that part, instead 'missing description' is added into the array
+            # so this tells us if the GPT failed to generate an expected portion
+            
+        except Exception as e: # this is just the exception portion
+            print(f"Couldn't process: {prod_des}. Error: {e}") # we r just saying if we couldn't process any part of the inputs
+            ar1.append('could not process')
+            ar2.append('could not process')
+            ar3.append('could not process')
+            ar4.append('could not process')
+
+    return df_mk(ar1, ar2, ar3, ar4) # finally we make the df w the arrays we built
+
+display(call_marketinGPT()) # now we r just displaying the df that we made
