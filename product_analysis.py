@@ -4,6 +4,7 @@ from langchain_community.chat_models import QianfanChatEndpoint, QianfanEmbeddin
 from langchain_core.output_parsers import StrOutputParser # for converting llm output to something Python understands
 import pandas as pd # for making dfs
 from IPython.display import display # for displaying the df with styling
+import numpy # for doing dot product
 
 
 # IMPORT RAG SEARCH & TEXT EMBEDDING APIS & POSSIBLY NUMPY FOR DOT PRODUCT
@@ -21,10 +22,17 @@ embed = QianfanEmbeddingsEndpoint(model="bge_large_zh", endpoint="bge_large_zh")
 # ^ make a supplementary method that creates a df of this
 # ^ return as a list?? (not sure)
 
+def rag_search(llm_output):
+    
+    return
+
 # DEF METHOD FOR COMPARING LLM OUTPUT EMBEDDINGS AND ONLINE SEARCH INFO EMBEDDINGS
 # ^ just use dot product and then make a df of the distances? (what is the right term?)
 # ^ then sort it from highest to lowest (highest means that it is the closest)  & take the text of the top 4 closest results and concat into string
 # ^ return as string (as context)
+
+def dot_prod(llm_embed, search_embed):
+    return
 
 
 def df_mk(ar1, ar2, ar3, ar4):
