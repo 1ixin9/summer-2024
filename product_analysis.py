@@ -1,8 +1,9 @@
-from langchain.prompts import PromptTemplate
-from langchain_community.chat_models import QianfanChatEndpoint
-from langchain_core.output_parsers import JsonOutputParser
-import pandas as pd
-from IPython.display import display
+from langchain.prompts import PromptTemplate # for creating the template we feed to llm
+from langchain_community.chat_models import QianfanChatEndpoint # for getting the actual GPT llm
+from langchain_core.output_parsers import StrOutputParser # for converting llm output to something Python understands
+import pandas as pd # for making dfs
+from IPython.display import display, HTML # for displaying the df with styling
+import re # for regular expressions
 
 # key
 qianfan_ak = "DAEEqjuvglLTgQMCXqRvqfUj"
@@ -19,6 +20,31 @@ def df_mk(ar1, ar2, ar3, ar4):
         "目标受众": ar4 # and put it into the df like that
     })
     return df
+
+def parse_response(response): # this parses the response param
+    
+    # split the response into lines
+    lines = response.split('\n')
+    
+    # initialize placeholders
+    product_description = 'missing description'
+    selling_points = 'missing description'
+    best_marketing_point = 'missing description'
+    target_audience = 'missing description'
+    
+    # iterate over lines and find the relevant sections
+    for line in lines:
+        if line.startswith("1. **产品描述**："):
+            product_description = line[len("1. **产品描述**："):].strip()
+        elif line.startswith("2. **产品卖点**："):
+            selling_points = line[len("2. **产品卖点**："):].strip()
+        elif line.startswith("3. **最佳营销卖点**："):
+            best_marketing_point = line[len("3. **最佳营销卖点**："):].strip()
+        elif line.startswith("4. **目标受众**："):
+            target_audience = line[len("4. **目标受众**："):].strip()
+    
+    return product_description, selling_points, best_marketing_point, target_audience
+
 
 def call_marketinGPT():
 
@@ -71,10 +97,10 @@ def call_marketinGPT():
 
     for prod_des in prod_descr: # this is a for-each loop which ensures that each val in the list is used
         
-        marketinGPT = prompt | llm | JsonOutputParser() # this is the setup for the processing pipeline
+        marketinGPT = prompt | llm | StrOutputParser() # this is the setup for the processing pipeline
         # prompt refers to the template ur using to prompt engineer -> this is given to llm
         # llm then takes the text input and generates a response
-        # JsonOutputParser is an output parser (DUH but also an output parser takes raw output and turns it into a structured format)
+        # StrOutputParser is an output parser (DUH but also an output parser takes raw output and turns it into a structured format)
         # ^ this turns the llm's output into something Python can easily understand
         # using the '|' operator is basically the chaining part of the processing pipeline
         # ^ this says the output of one component should be used as the input of the next component
@@ -87,12 +113,12 @@ def call_marketinGPT():
             # "prod" is the input variable in the prompt, prod_des is the value in the for-each loop
             # this lets prod_des be passed in as the input of the prompt
             
-            ar1.append(ans.get('产品描述', 'missing description')) # here we r appending (adding) the answer to the arrays
-            ar2.append(ans.get('产品卖点', 'missing description')) # we hv one option, where if the answer provided by GPT includes
-            ar3.append(ans.get('最佳营销卖点', 'missing description')) # the key for an array we r expecting (like it has a '产品描述' component)
-            ar4.append(ans.get('目标受众', 'missing description')) # then the text following that will be stored in the array
-            # but if there's no key for that part, instead 'missing description' is added into the array
-            # so this tells us if the GPT failed to generate an expected portion
+            parsed_response = parse_response(ans) # here we use parse_response to parse the response (DUH)
+            
+            ar1.append(parsed_response[0]) # here we r appending (adding) the answer to the arrays
+            ar2.append(parsed_response[1]) # hopefully everything is right
+            ar3.append(parsed_response[2]) # but otherwise it will all be missing descriptions
+            ar4.append(parsed_response[3]) # so this tells us if the GPT failed to generate an expected portion
             
         except Exception as e: # this is just the exception portion
             print(f"Couldn't process: {prod_des}. Error: {e}") # we r just saying if we couldn't process any part of the inputs
@@ -103,4 +129,17 @@ def call_marketinGPT():
 
     return df_mk(ar1, ar2, ar3, ar4) # finally we make the df w the arrays we built
 
-display(call_marketinGPT()) # now we r just displaying the df that we made
+# creating the df
+df = call_marketinGPT()
+
+# styling df
+styled_df = df.style.set_properties(**{
+    'background-color': 'white',
+    'color': 'black',
+    'border-color': 'black'
+}).set_table_styles([
+    {'selector': 'thead th', 'props': [('background-color', 'black'), ('color', 'white')]}
+]).set_caption("产品营销分析")
+
+# displaying the styled df
+display(HTML(styled_df.to_html()))
