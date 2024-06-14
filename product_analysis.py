@@ -1,14 +1,85 @@
 from langchain.prompts import PromptTemplate # for creating the template we feed to llm
-from langchain_community.chat_models import QianfanChatEndpoint, QianfanEmbeddingsEndpoint
+from langchain_community.chat_models import QianfanChatEndpoint
+from langchain.embeddings import QianfanEmbeddingsEndpoint
 # ^ for getting the actual GPT llm and also the embeddor
 from langchain_core.output_parsers import StrOutputParser # for converting llm output to something Python understands
 import pandas as pd # for making dfs
 from IPython.display import display # for displaying the df with styling
-import numpy # for doing dot product
+import numpy as np # for doing dot product
+import requests # for making HTTP request in Python to handle headers, cookies, and authentication
+from bs4 import BeautifulSoup # for parsing HTML and XML docs so we can get j the urls / body text directly from a webpage
+import re # for using regex funcs like sub and shit
 
 
-# IMPORT RAG SEARCH & TEXT EMBEDDING APIS & POSSIBLY NUMPY FOR DOT PRODUCT
+# does web scraping and text searching to search Baidu -> get search urls -> fetch content from urls -> process text
+def baidu_search(query): # query being the context we got
+    # defines url for baidu search
+    url = "https://www.baidu.com/s" # baidu (DUH)
+    
+    search_query = {'wd': query} # wd stands for word/query which is what we're searching (the context we're taking in)
+    
+    headers = { # headers r necessary bc when we as humans make searches we hv these; we need this to mimic a regular web browser's request
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    } # the User-Agent is a commonly used string for web scraping to avoid detection and blocking by webs
+    
+    # sends the get request to Baidu w our search params and header to do the search for relevant webpages
+    response = requests.get(url, params=search_query, headers=headers)
+    
+    # we need to initialize a Beautiful Soup object to actually parse the HTML so we can just get the urls
+    soup = BeautifulSoup(response.text, 'html.parser')
 
+    # making a list to store urls of search results
+    results = []
+    # so a webpage will be separated in a bunch of divs as you know, and each div has a class that its associated w
+    # so when we do soup.find_all('div', class_='result'), we r using the soup object to search across all 'div's for the result class
+    # and then we r doing a for each loop of all the result divs and finding the link portion of it
+    for item in soup.find_all('div', class_='result'):
+        link = item.find('a', href=True) # 'a' is a link notation
+        if link:
+            results.append(link['href']) # and if it's a link then we add it into the list w the 'href' attribute which is a url
+
+    # now we are making another list based on our results list that takes all the urls there and calls get_page on it to get the acc page
+    docs = get_page(results) # so this stores a bunch of pages
+
+    # making another list to store the acc content of the pages in
+    content = []
+    for doc in docs: # for each doc in the docs list
+        page_text = re.sub("\n\n+", "\n", doc) # this regex part is p cool, sub() obviously substitutes something w another thing
+        # and in this case we r subbing all the \n\n+ w j one \n which means that anything more than 1 newline will be replaced w a newline
+        # so we can just get all the text in a braindead way like this
+        text = cutoff(page_text) # we r now j truncating the text (so like cutting off anything more than a certain amt)
+        content.append(text) # and we r adding it to the list
+
+    return content # and now we r just returning a list of all the text from relevant pages
+
+# this is the function that we called in baidu_search to acc get the webpages from the urls
+def get_page(urls):
+    
+    docs = [] # we r making to store the page contents
+    # similar process w headers as above
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    # a for each loop of all the urls
+    for url in urls:
+        
+        response = requests.get(url, headers=headers) # this time we r j popping into all the pages
+        
+        if response.status_code == 200: # status code 200 means that it was successful so if we were let in, then we call beautiful soup
+            
+            soup = BeautifulSoup(response.content, 'html.parser') # we initiate the soup object again
+            # ^ we get the content from the response (the response being the page that we popped into)
+            # ^ then we specify we wanna use 'html.parser' to get the info
+            paragraphs = soup.find_all('p') # 'p' = praragraph so now we r making a list of all the paragraphs from the parsed html
+            # ^ the issue is what if there are text content thats important thats not marked as 'p' or what if 'p' isn't right?
+            page_text = "\n".join([p.get_text() for p in paragraphs]) # and we extract all the text from the paragraphs & join them
+            docs.append(page_text) # and now we add the text into our list of page content
+    # so finally we can return a list w all the page contents of j all the text on the page
+    return docs
+
+# this is just a function to cut off anything thats more than 462 words idk the number j felt right
+def cutoff(text):
+    words = text.split() # this splits all the text into a list of individual word strings
+    truncated = " ".join(words[:462]) # and now we r just joining the first 462 words tgt (hopefully thats enough lol)
+    return truncated
 
 # key
 qianfan_ak = "DAEEqjuvglLTgQMCXqRvqfUj"
@@ -16,24 +87,11 @@ qianfan_sk = "s0AJ849GNB6440lwLWDvGuNEJNrgrbQ3"
 
 # models
 llm = QianfanChatEndpoint(model="ERNIE-4.0-8K", streaming=True, qianfan_ak=qianfan_ak, qianfan_sk=qianfan_sk, penalty_score=1)
-embed = QianfanEmbeddingsEndpoint(model="bge_large_zh", endpoint="bge_large_zh")
+embed = QianfanEmbeddingsEndpoint(model="bge_large_zh", endpoint="bge_large_zh", qianfan_ak=qianfan_ak, qianfan_sk=qianfan_sk)
 
-# DEF METHOD FOR TURNING ONLINE SEARCH INFO (maybe just like... the first 3 pages?) INTO EMBEDDINGS
-# ^ make a supplementary method that creates a df of this
-# ^ return as a list?? (not sure)
-
-def rag_search(llm_output):
-    
-    return
-
-# DEF METHOD FOR COMPARING LLM OUTPUT EMBEDDINGS AND ONLINE SEARCH INFO EMBEDDINGS
-# ^ just use dot product and then make a df of the distances? (what is the right term?)
-# ^ then sort it from highest to lowest (highest means that it is the closest)  & take the text of the top 4 closest results and concat into string
-# ^ return as string (as context)
-
-def dot_prod(llm_embed, search_embed):
-    return
-
+# does the rag search and returns a list (of strings) with all the info from the first few pages of web links (each link's info is concatenated tgt)
+def rag_search(query):
+    return baidu_search(query) # rn we hv them as diff functions in case baidu doesn't work out
 
 def df_mk(ar1, ar2, ar3, ar4):
     df = pd.DataFrame({ # this is the syntax for making a df which is basically a table in pandas
@@ -86,15 +144,13 @@ def call_marketinGPT():
     # desc is each individual line stored in prod_descr, using desc.strip for each desc gets rid of \n at the end of each one
     # now, prod_descr is like ["prod_des1", "prod_des2"]
     
-    prompt1 = PromptTemplate( # MAKE THIS TAKE IN A STRING PARAM FOR CONTEXT
+    prompt1 = PromptTemplate(
         # template is the prompt that ur using to prompt engineer the GPT
-        
-        # ADD PART THAT SAYS USE THE CONTEXT WE PROVIDED TO HELP ANSWER
-        
+                
         template = """输入一个产品名称后，生成一段简短描述，涵盖其主要卖点、特点和优势。\n\n
 
         输入格式：\n
-        [{prod}}]\n\n
+        [{prod}]\n\n
 
         输出格式：\n
         [简短描述，包括卖点、特点和优势]\n""",
@@ -104,10 +160,7 @@ def call_marketinGPT():
     )
     
     prompt2 = PromptTemplate(
-        # template is the prompt that ur using to prompt engineer the GPT
-        
-        # BELOW ADD PART THAT TAKES IN SOME CONTEXT AS WELL
-                
+                        
         template="""作为一名零售顾问助手，你的任务是帮助用户分析他们的产品描述，
         并提供该产品的卖点、最佳营销卖点、目标受众以及针对目标受众的营销策略。
         请根据以下格式进行回复，并且仅根据用户提供的信息进行分析和回答：\n\n
@@ -132,10 +185,13 @@ def call_marketinGPT():
         1. **产品描述**：用户提供的产品描述\n
         2. **产品卖点**：提炼出的产品卖点\n
         3. **最佳营销卖点**：选择的最佳营销卖点及其原因\n
-        4. **目标受众**：确定的目标消费群体\n""",
+        4. **目标受众**：确定的目标消费群体\n
         
-        input_variables = ["prod"] # here ur telling the gpt that the input variables it uses will be
-        # used where {prod} is used in the template
+        主要使用以下信息来得出答案：\n\n
+        
+        {context}""",
+        
+        input_variables = ["prod", "context"] # here ur telling the gpt that the input variables it uses will be
     )
     
     ar1, ar2, ar3, ar4 = [], [], [], [] # here ur declaring the arrays that the df will be made w
@@ -146,10 +202,19 @@ def call_marketinGPT():
         
         ctxt = marketinGPT.invoke({"prod": prod_des})
         
-        # HERE U NEED TO PERFORM A SEARCH AND THEN EMBED BOTH THE CONTEXT AND SEARCH RESULTS
-        # ^ call embedding on ctxt and then call the function for search and then embed its output
+        # do RAG search and embed the context and search results
+        ctxt_embed = embed.embed_query(ctxt) # uses the langchain qianfan embedder
+        search_results = rag_search(ctxt) # calls the RAG search func to get the list of search results for the context we r looking for
+        search_embed = embed.embed_documents(search_results) # then embeds the search results asw
         
-        # HERE CALL THE COMPARISON METHOD AND STORE ITS OUTPUT INTO A STRING - CALL IT rag_result
+        # calculate dot product and get closest results
+        similarity_scores = np.dot(ctxt_embed, search_embed.T) # this will get all the dot products for our searches X context
+        top_results = sorted(zip(search_results, similarity_scores), key=lambda x: x[1], reverse=True)[:4] # this sorts the searches for highest matches
+        # the zip() function combines two lists into a list of tuples made up of the results and their scores
+        # sorted() sorts the function (DUH) based on "key=lambda x: x[1]" which means that it sorts on the second element (the scores)
+        # reverse=True means that it's sorted in descending order rather than ascending so top scores r on the top
+        # [:4] is the slice notation for getting the first up to :"x" index, so this would be the first 4 items
+        rag_result = " ".join([result[0] for result in top_results]) # this joins the first 4 items into one string to be fed into prompt
         
         
         marketinGPT = prompt2 | llm | StrOutputParser() # this is the setup for the processing pipeline
@@ -162,14 +227,13 @@ def call_marketinGPT():
         # ^ so the prompt's output is the llm's input, the llm's output is the parser's input
         
         try: # we using a try-except bc who knows if the GPT will output something that is always understandable
-            
-            # CHANGE BELOW ans SUCH THAT IT TAKES IN rag_result as well 
-            
-            ans = marketinGPT.invoke({"prod": prod_des}) # marketinGPT (brilliant name) is the name of the pipeline
+                        
+            ans = marketinGPT.invoke({"prod": prod_des, "context": rag_result}) # marketinGPT (brilliant name) is the name of the pipeline
             # so when we call it, we r getting an instance of it
             # .invoke(input val) is a method that tells the model to provide a response based on the input val
             # "prod" is the input variable in the prompt, prod_des is the value in the for-each loop
             # this lets prod_des be passed in as the input of the prompt
+            # ^ same for rag_result
             
             parsed_response = parse_response(ans) # here we use parse_response to parse the response (DUH)
             
