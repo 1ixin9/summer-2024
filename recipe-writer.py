@@ -4,7 +4,9 @@ from langchain_community.chat_models import QianfanChatEndpoint
 from langchain.embeddings import QianfanEmbeddingsEndpoint
 from langchain_core.output_parsers import StrOutputParser
 import numpy as np
-from product_analysis import split_text, rag_search
+import requests
+from bs4 import BeautifulSoup
+import re
 
 # key
 qianfan_ak = "DAEEqjuvglLTgQMCXqRvqfUj"
@@ -86,6 +88,73 @@ class GradeDocuments(BaseModel):
     binary_score: str = Field(
         description="搜索结果与搜索相关，'yes' 或 'no'"
     )
+
+
+def split_text(text):
+    words = text.split()
+    chunks, current_chunk = [], []
+
+    for word in words:
+        if len(" ".join(current_chunk + [word])) <= 400 and word:
+            current_chunk.append(word)
+        elif current_chunk:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
+
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    return chunks
+
+
+def rag_search(query):
+    url = "https://www.baidu.com/s"
+
+    search_query = {'wd': query}
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+    response = requests.get(url, params=search_query, headers=headers)
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    results, content = [], []
+
+    for item in soup.find_all('div', class_='result'):
+        link = item.find('a', href=True)  # 'a' is a link notation
+        if link:
+            results.append(link['href'])
+
+    docs = get_page(results)
+
+    for doc in docs:
+        page_text = re.sub("\n\n+", "\n", doc)
+
+        if page_text and page_text != "问题反馈":
+            content.append(page_text)
+
+    return content
+
+
+def get_page(urls):
+
+    docs = []
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    for url in urls:
+
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            paragraphs = soup.find_all('p')
+            page_text = "\n".join([p.get_text() for p in paragraphs])
+            chunks = split_text(page_text)
+            docs.extend(chunks)
+
+    return docs
 
 
 def process_search(query):
