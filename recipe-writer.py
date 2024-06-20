@@ -24,16 +24,11 @@ def make_prompts():
     prompt1 = PromptTemplate(
 
         template="""
-        
         请考虑{prod}的特点、市场定位和用户反馈，
         详细说明该产品在市场上的独特卖点和竞争优势。
         请提供关于该产品如何吸引目标用户群体的见解。\n\n
-        
         主要使用以下信息来得出答案: \n
-        
-        {context}
-        
-        """,
+        {context}""",
 
         input_variables=["prod", "context"]
 
@@ -42,15 +37,10 @@ def make_prompts():
     prompt2 = PromptTemplate(
 
         template="""
-        
         请分析使用{prod}的主要目标人群的特征、偏好和需求。
         结合季节和节日，说明这些人群在这个时间点对{prod}的需求和期望。\n\n
-        
         主要使用以下信息来得出答案: \n
-        
-        {context}
-        
-        """,
+        {context}""",
 
         input_variables=["prod", "context"]
 
@@ -59,16 +49,11 @@ def make_prompts():
     prompt3 = PromptTemplate(
 
         template="""
-        
         请详细说明{prod}在{season}时间点的最佳使用方法和搭配。
         考虑到食材的季节性和营养价值，
         解释为什么在这个时间点使用{prod}最为合适。\n\n
-        
         主要使用以下信息来得出答案: \n
-        
-        {context}
-        
-        """,
+        {context}""",
 
         input_variables=["prod", "season", "context"]
 
@@ -80,12 +65,8 @@ def make_prompts():
         
         请提供关于在{season}时间点使用{prod}进行促销活动或节日活动的建议。
         详细说明如何利用节日气氛和季节特点来提升{prod}的销量和品牌知名度。\n\n
-        
         主要使用以下信息来得出答案: \n
-        
-        {context}
-        
-        """,
+        {context}""",
 
         input_variables=["prod", "season", "context"]
 
