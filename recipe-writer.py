@@ -1,5 +1,6 @@
 from langchain.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field  # for grading
+# for grading but not used since the template is kinda confusing
+from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_community.chat_models import QianfanChatEndpoint
 from langchain.embeddings import QianfanEmbeddingsEndpoint
 from langchain_core.output_parsers import StrOutputParser
@@ -10,6 +11,7 @@ import re
 import threading
 from langchain_community.llms import Tongyi
 import os
+import time
 
 # key
 qianfan_ak = "DAEEqjuvglLTgQMCXqRvqfUj"
@@ -26,19 +28,7 @@ llm2 = Tongyi(model_name="qwen-max")
 embed = QianfanEmbeddingsEndpoint(
     model="bge_large_zh", endpoint="bge_large_zh", qianfan_ak=qianfan_ak, qianfan_sk=qianfan_sk)
 
-grade_prompt = PromptTemplate(
-    template="""    
-        搜索结果相关性检查的二进制评分。\n   
-        搜索结果: \n\n {result} 
-        \n\n 搜索输入: {query}
-        \n\n搜索结果与搜索相关，'yes' 或 'no'
-        """,
-    input_variables=["query", "result"]
-)
-
-retrieval_grader = grade_prompt | llm | StrOutputParser()
-retrieval_grader2 = grade_prompt | llm2 | StrOutputParser()
-
+# list of all the prompts we use
 prompt1 = PromptTemplate(
     template="""
     请考虑{prod}的特点、市场定位和用户反馈，
@@ -77,6 +67,8 @@ prompt4 = PromptTemplate(
     input_variables=["prod", "season", "context"]
 )
 
+# splits the text into chunks to be processed
+
 
 def split_text(text):
     words = text.split()
@@ -93,6 +85,8 @@ def split_text(text):
         chunks.append(" ".join(current_chunk))
 
     return chunks
+
+# performs rag search via scraping baidu
 
 
 def rag_search(query):
@@ -125,6 +119,8 @@ def rag_search(query):
 
     return content
 
+# gets the info from the actual webpages
+
 
 def get_page(urls):
     docs = []
@@ -142,6 +138,8 @@ def get_page(urls):
 
     return docs
 
+# performs searching, embeds query + search to get similarity score, returns the content
+
 
 def process_search(query):
 
@@ -149,7 +147,7 @@ def process_search(query):
     search_result = rag_search(query)
 
     if not search_result:
-        return "No relevant content found."
+        return "no relevant content found"
 
     all_chunks = []
     for result in search_result:
@@ -157,7 +155,7 @@ def process_search(query):
         all_chunks.extend(chunks)
 
     if not all_chunks:
-        return "No valid chunks found in the search results."
+        return "no valid chunks in search"
 
     search_embed = []
     i1, i2 = 0, 0
@@ -168,7 +166,7 @@ def process_search(query):
         i1 += 1
 
     if not search_embed:
-        return "Failed to embed search results."
+        return "couldn't embed search results"
 
     search_embed = np.array(search_embed)
     similarity_scores = np.dot(q_embed, search_embed.T)
@@ -183,9 +181,9 @@ def process_search(query):
 
     rag_results = " ".join([result[0] for result in top_results])
 
-    print(rag_results)
-
     return rag_results
+
+# feeds query into an llm to rewrite for optimized search results
 
 
 def re_search(query):
@@ -203,6 +201,8 @@ def re_search(query):
     new_query = rewriter.invoke({"query": query})
 
     return process_search(new_query)
+
+# performs the crag process by grading and then re-searching if necessary
 
 
 def crag_search(llm, prompt, prod_des, season, keywords, add_season=None):
@@ -237,6 +237,7 @@ def crag_search(llm, prompt, prod_des, season, keywords, add_season=None):
 
 
 def call_reciGPT():
+    # below is input if u wanna do that
     # prod_des = input("Enter product:")
     # season = input("Enter season:")
 
@@ -245,10 +246,12 @@ def call_reciGPT():
 
     context = []
 
+    # defines threading function
     def call_crag(llm, prompt, prod_des, season, keywords, add_season=None):
         ctxt = crag_search(llm, prompt, prod_des, season, keywords, add_season)
         context.append(ctxt)
 
+    # initializes threads
     t1 = threading.Thread(target=call_crag, args=(
         llm, prompt1, prod_des, season, "产品特点 市场定位 用户反馈 卖点 竞争优势"))
     t2 = threading.Thread(target=call_crag, args=(
@@ -258,9 +261,13 @@ def call_reciGPT():
     t4 = threading.Thread(target=call_crag, args=(
         llm2, prompt4, prod_des, season, "促销活动 节日活动 提升销量 品牌知名度", True))
 
+    # starts threads w 2 secs wait time inbtw so as to not overload requests
     t1.start()
+    time.sleep(2)
     t2.start()
+    time.sleep(2)
     t3.start()
+    time.sleep(2)
     t4.start()
 
     t1.join()
